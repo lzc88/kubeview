@@ -12,3 +12,8 @@ dependencies = [
     "kubernetes>=37.0.1",
     "uvicorn[standard]>=0.54.0",
 ]
+
+[tool.uv.workspace]
+members = [
+    "ecommerce",
+]
