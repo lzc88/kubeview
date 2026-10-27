@@ -4,8 +4,9 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from ecommerce.orders import payments_client
 from ecommerce.orders.db.db import get_session
-from ecommerce.orders.db.models import Order, OrderItem
+from ecommerce.orders.db.models import Order, OrderItem, OrderStatus
 from ecommerce.orders.schemas import OrderCreate, OrderRead
 
 app = FastAPI(title="orders")
@@ -35,6 +36,30 @@ def get_order(order_id: int, session: SessionDep) -> OrderRead:
     order = session.get(Order, order_id, options=[selectinload(Order.items)])
     if order is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order not found")
+    return OrderRead.model_validate(order)
+
+
+@app.post("/orders/{order_id}/pay")
+def pay_order(order_id: int, session: SessionDep) -> OrderRead:
+    order = session.get(
+        Order, order_id, options=[selectinload(Order.items)], with_for_update=True
+    )
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order not found")
+    if order.status != OrderStatus.PENDING:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"order is {order.status}, not PENDING"
+        )
+
+    try:
+        succeeded = payments_client.charge(order.id, order.total)
+    except payments_client.PaymentsUnavailable:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "payments service unavailable"
+        )
+
+    order.status = OrderStatus.PAID if succeeded else OrderStatus.PAYMENT_FAILED
+    session.commit()
     return OrderRead.model_validate(order)
 
 
