@@ -1,17 +1,21 @@
 import time
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 
 from ecommerce.payments.config import settings
 from ecommerce.payments.main import app
+from ecommerce.payments.store import store
 
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(settings, "latency_ms", 0)
+    store.clear()
     with TestClient(app) as client:
         yield client
+    store.clear()
 
 
 def pay(client, order_id=1, amount="24.98"):
@@ -47,10 +51,50 @@ def test_payment_fails_when_failure_rate_is_one(client, monkeypatch):
     assert response.json()["status"] == "FAILED"
 
 
-def test_each_payment_gets_a_new_id(client, monkeypatch):
+def test_each_order_gets_a_new_payment_id(client, monkeypatch):
     monkeypatch.setattr(settings, "failure_rate", 0.0)
 
-    assert pay(client).json()["payment_id"] != pay(client).json()["payment_id"]
+    first = pay(client, order_id=1).json()["payment_id"]
+    second = pay(client, order_id=2).json()["payment_id"]
+
+    assert first != second
+
+
+def test_repeat_payment_returns_stored_result(client, monkeypatch):
+    monkeypatch.setattr(settings, "failure_rate", 0.0)
+    first = pay(client)
+
+    response = pay(client)
+
+    assert response.status_code == 200
+    assert response.json() == first.json()
+
+
+def test_repeat_payment_does_not_reroll_a_failure(client, monkeypatch):
+    monkeypatch.setattr(settings, "failure_rate", 1.0)
+    pay(client)
+    monkeypatch.setattr(settings, "failure_rate", 0.0)
+
+    response = pay(client)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "FAILED"
+
+
+def test_repeat_payment_with_different_amount_is_rejected(client):
+    pay(client, amount="24.98")
+
+    response = pay(client, amount="10.00")
+
+    assert response.status_code == 409
+
+
+def test_payment_in_progress_is_rejected(client):
+    store.reserve(1, Decimal("24.98"))
+
+    response = pay(client, amount="24.98")
+
+    assert response.status_code == 409
 
 
 def test_latency_is_applied(client, monkeypatch):
