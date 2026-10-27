@@ -12,7 +12,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ecommerce.db.db import Base
+from ecommerce.orders.db.db import Base
 
 
 class OrderStatus(StrEnum):

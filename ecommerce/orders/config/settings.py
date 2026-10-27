@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    postgres_db: str = "shop"
+    postgres_db: str = "ecommerce"
     postgres_user: str
     postgres_password: SecretStr
 
