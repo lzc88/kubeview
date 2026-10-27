@@ -1,5 +1,7 @@
-from sqlalchemy import Text, create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from collections.abc import Iterator
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from ecommerce.orders.config import settings
 
@@ -7,10 +9,6 @@ engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 
-class Base(DeclarativeBase):
-    type_annotation_map = {str: Text}
-
-
-def get_session():
+def get_session() -> Iterator[Session]:
     with SessionLocal() as session:
         yield session
