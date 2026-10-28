@@ -6,6 +6,9 @@ import pytest
 from sqlalchemy import func, update
 
 from ecommerce.orders import payments_client
+
+SUCCEEDED = payments_client.PaymentResult("SUCCEEDED")
+FAILED = payments_client.PaymentResult("FAILED")
 from ecommerce.orders.db.models import IdempotencyKey, Order, OrderItem, OrderStatus
 from ecommerce.orders.reconcile import reconcile
 
@@ -47,7 +50,7 @@ def status_of(session, order):
 
 
 def test_stale_processing_order_is_settled(session, charge):
-    charge(True)
+    charge(SUCCEEDED)
     order = add_order(session, OrderStatus.PROCESSING, age=timedelta(minutes=5))
 
     result = reconcile(session)
@@ -57,7 +60,7 @@ def test_stale_processing_order_is_settled(session, charge):
 
 
 def test_stale_processing_order_can_settle_as_failed(session, charge):
-    charge(False)
+    charge(FAILED)
     order = add_order(session, OrderStatus.PROCESSING, age=timedelta(minutes=5))
 
     reconcile(session)
@@ -66,7 +69,7 @@ def test_stale_processing_order_can_settle_as_failed(session, charge):
 
 
 def test_fresh_processing_order_is_left_alone(session, charge):
-    charge(True)
+    charge(SUCCEEDED)
     order = add_order(session, OrderStatus.PROCESSING)
 
     result = reconcile(session)
@@ -86,7 +89,7 @@ def test_processing_order_stays_processing_while_payments_is_down(session, charg
 
 
 def test_old_pending_order_is_cancelled(session, charge):
-    charge(True)
+    charge(SUCCEEDED)
     order = add_order(session, OrderStatus.PENDING, age=timedelta(hours=1))
 
     result = reconcile(session)
@@ -96,7 +99,7 @@ def test_old_pending_order_is_cancelled(session, charge):
 
 
 def test_fresh_pending_order_is_left_alone(session, charge):
-    charge(True)
+    charge(SUCCEEDED)
     order = add_order(session, OrderStatus.PENDING)
 
     reconcile(session)
@@ -115,7 +118,7 @@ def test_old_pending_order_is_never_charged(session, monkeypatch):
 
 
 def test_settled_orders_are_untouched(session, charge):
-    charge(False)
+    charge(FAILED)
     order = add_order(session, OrderStatus.PAID, age=timedelta(hours=1))
 
     reconcile(session)
@@ -137,7 +140,7 @@ def add_key(session, age=timedelta(0)):
 
 
 def test_expired_idempotency_keys_are_deleted(session, charge):
-    charge(True)
+    charge(SUCCEEDED)
     expired = add_key(session, age=timedelta(hours=25))
     fresh = add_key(session, age=timedelta(hours=1))
 
@@ -146,3 +149,13 @@ def test_expired_idempotency_keys_are_deleted(session, charge):
     assert result.expired_keys == 1
     assert session.get(IdempotencyKey, expired) is None
     assert session.get(IdempotencyKey, fresh) is not None
+
+
+def test_processing_order_with_open_checkout_stays_processing(session, charge):
+    charge(payments_client.PaymentResult("PENDING", checkout_url="https://checkout"))
+    order = add_order(session, OrderStatus.PROCESSING, age=timedelta(minutes=5))
+
+    result = reconcile(session)
+
+    assert result.still_processing == 1
+    assert status_of(session, order) == OrderStatus.PROCESSING

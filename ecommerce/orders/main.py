@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session, selectinload
 from ecommerce.orders import idempotency, payment_flow, payments_client
 from ecommerce.orders.db.db import get_session
 from ecommerce.orders.db.models import IdempotencyKey, Order, OrderItem, OrderStatus
-from ecommerce.orders.schemas import OrderCreate, OrderRead
+from ecommerce.orders.schemas import (
+    OrderCreate,
+    OrderPayRead,
+    OrderRead,
+    PaymentNotification,
+)
 
 app = FastAPI(title="orders")
 
@@ -68,7 +73,7 @@ def get_order(order_id: int, session: SessionDep) -> OrderRead:
 
 
 @app.post("/orders/{order_id}/pay")
-def pay_order(order_id: int, session: SessionDep, response: Response) -> OrderRead:
+def pay_order(order_id: int, session: SessionDep, response: Response) -> OrderPayRead:
 
     order = session.get(
         Order, order_id, options=[selectinload(Order.items)], with_for_update=True
@@ -77,19 +82,40 @@ def pay_order(order_id: int, session: SessionDep, response: Response) -> OrderRe
     if order is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order not found")
 
-    if order.status != OrderStatus.PENDING:
+    if order.status not in (OrderStatus.PENDING, OrderStatus.PROCESSING):
         raise HTTPException(
-            status.HTTP_409_CONFLICT, f"order is {order.status}, not PENDING"
+            status.HTTP_409_CONFLICT, f"order is {order.status}, not payable"
         )
 
     order.status = OrderStatus.PROCESSING
     session.commit()
 
     try:
-        payment_flow.settle(session, order)
+        result = payment_flow.settle(session, order)
 
     except payments_client.PaymentsUnavailable:
         response.status_code = status.HTTP_202_ACCEPTED
+        return OrderPayRead.model_validate(order)
+
+    if order.status == OrderStatus.PROCESSING:
+        response.status_code = status.HTTP_202_ACCEPTED
+
+    return OrderPayRead.model_validate(order).model_copy(
+        update={"checkout_url": result.checkout_url}
+    )
+
+
+@app.post("/orders/{order_id}/payment-result")
+def record_payment_result(
+    order_id: int, payload: PaymentNotification, session: SessionDep
+) -> OrderRead:
+
+    order = session.get(Order, order_id, options=[selectinload(Order.items)])
+
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order not found")
+
+    payment_flow.apply_result(session, order, payload.status)
 
     return OrderRead.model_validate(order)
 

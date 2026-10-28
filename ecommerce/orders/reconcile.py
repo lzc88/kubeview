@@ -34,10 +34,15 @@ def reconcile(session: Session) -> ReconcileResult:
     ).all()
     for order in stale:
         try:
-            settle(session, order)
-            result.settled += 1
+            payment = settle(session, order)
         except payments_client.PaymentsUnavailable:
             result.still_processing += 1
+            continue
+
+        if payment.status == "PENDING":
+            result.still_processing += 1
+        else:
+            result.settled += 1
 
     pending_cutoff = func.now() - timedelta(minutes=settings.pending_order_ttl_minutes)
     cancelled = cast(
