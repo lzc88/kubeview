@@ -1,0 +1,107 @@
+name: ecommerce
+
+x-app: &app
+  image: ecommerce:local
+  build:
+    context: ..
+    dockerfile: ecommerce/Dockerfile
+
+services:
+  orders-db:
+    image: postgres:17-alpine
+    env_file: orders/config/.env
+    volumes:
+      - orders-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      retries: 15
+
+  payments-db:
+    image: postgres:17-alpine
+    env_file: payments/config/.env
+    volumes:
+      - payments-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      retries: 15
+
+  orders-init:
+    <<: *app
+    command: python -m ecommerce.orders.db.init_db
+    env_file: orders/config/.env
+    environment: &orders-env
+      POSTGRES_HOST: orders-db
+      POSTGRES_PORT: "5432"
+      PAYMENTS_URL: http://payments:8001
+    depends_on:
+      orders-db:
+        condition: service_healthy
+
+  payments-init:
+    <<: *app
+    command: python -m ecommerce.payments.db.init_db
+    env_file: payments/config/.env
+    environment: &payments-env
+      POSTGRES_HOST: payments-db
+      POSTGRES_PORT: "5432"
+      ORDERS_URL: http://orders:8000
+    depends_on:
+      payments-db:
+        condition: service_healthy
+
+  orders:
+    <<: *app
+    command: uvicorn ecommerce.orders.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      retries: 10
+    env_file: orders/config/.env
+    environment: *orders-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      orders-init:
+        condition: service_completed_successfully
+
+  payments:
+    <<: *app
+    command: uvicorn ecommerce.payments.main:app --host 0.0.0.0 --port 8001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')"]
+      interval: 5s
+      retries: 10
+    env_file: payments/config/.env
+    environment: *payments-env
+    ports:
+      - "127.0.0.1:8001:8001"
+    depends_on:
+      payments-init:
+        condition: service_completed_successfully
+
+  orders-reconcile:
+    <<: *app
+    command: sh -c 'while true; do python -m ecommerce.orders.reconcile; sleep 60; done'
+    restart: unless-stopped
+    env_file: orders/config/.env
+    environment: *orders-env
+    depends_on:
+      orders-init:
+        condition: service_completed_successfully
+
+  stripe-listen:
+    image: stripe/stripe-cli:v1.53.1
+    command: listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired --forward-to http://payments:8001/webhooks/stripe
+    restart: unless-stopped
+    env_file: payments/config/.env
+    depends_on:
+      payments:
+        condition: service_healthy
+
+volumes:
+  orders-db:
+  payments-db:
