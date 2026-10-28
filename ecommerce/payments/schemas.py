@@ -1,13 +1,9 @@
 from decimal import Decimal
-from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-
-class PaymentStatus(StrEnum):
-    SUCCEEDED = "SUCCEEDED"
-    FAILED = "FAILED"
+from ecommerce.payments.db.models import PaymentStatus
 
 
 class PaymentCreate(BaseModel):
@@ -16,7 +12,12 @@ class PaymentCreate(BaseModel):
 
 
 class PaymentRead(BaseModel):
-    payment_id: UUID
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
     order_id: int
     amount: Decimal
     status: PaymentStatus
+    provider: str
+    provider_payment_id: str | None
+    checkout_url: str | None

@@ -365,6 +365,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
+    { name = "stripe" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -380,6 +381,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic-settings", specifier = ">=2.16.1" },
     { name = "sqlalchemy", specifier = ">=2.1.6" },
+    { name = "stripe", specifier = ">=16.0.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -1301,6 +1303,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
+]
+
+[[package]]
+name = "stripe"
+version = "16.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/23/aed4a83f9ab867993a96bb6dc6a4be13b42629fa66362000e7b709218c71/stripe-16.0.1.tar.gz", hash = "sha256:44f20abd85c5cdac1d019c290b2fa055db2b6f4890f7f3b2daa493eb48c9a0d2", size = 1544782, upload-time = "2026-10-27T00:45:50.118Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/aa/2826a75adb7f9007d713e0a073a70e750d69cf603783b8650d4c5eb757dc/stripe-16.0.1-py3-none-any.whl", hash = "sha256:f87d6aaf6d20c9e788c8532d23511eb42be4602e48cf4f425327e96ccb7e4f00", size = 2424918, upload-time = "2026-10-27T00:45:48.413Z" },
 ]
 
 [[package]]
