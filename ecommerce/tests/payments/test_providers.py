@@ -3,6 +3,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 import pytest
 import stripe
@@ -12,6 +13,7 @@ from ecommerce.payments.config import settings
 from ecommerce.payments.db.models import PaymentStatus
 
 STARTED = datetime(2026, 1, 1, tzinfo=UTC)
+PAYMENT_ID = UUID("6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f")
 
 SESSION = SimpleNamespace(
     id="cs_test_123", url="https://checkout.stripe.com/c/pay/cs_test_123"
@@ -46,7 +48,7 @@ def sessions(monkeypatch):
 def test_charge_returns_pending_checkout(sessions):
     sessions(SESSION)
 
-    result = providers.charge(42, Decimal("24.98"), STARTED)
+    result = providers.charge(PAYMENT_ID, 42, Decimal("24.98"), STARTED)
 
     assert result == providers.ChargeResult(
         PaymentStatus.PENDING,
@@ -55,10 +57,10 @@ def test_charge_returns_pending_checkout(sessions):
     )
 
 
-def test_checkout_request_is_idempotent_per_order(sessions):
+def test_checkout_request_is_idempotent_per_payment(sessions):
     fake = sessions(SESSION)
 
-    providers.charge(42, Decimal("24.98"), STARTED)
+    providers.charge(PAYMENT_ID, 42, Decimal("24.98"), STARTED)
 
     params, options = fake.calls[0]
     assert params["mode"] == "payment"
@@ -68,14 +70,14 @@ def test_checkout_request_is_idempotent_per_order(sessions):
     assert "42" in params["success_url"]
     assert "payment_method_types" not in params
     assert params["expires_at"] == int((STARTED + timedelta(minutes=60)).timestamp())
-    assert options == {"idempotency_key": "order-42"}
+    assert options == {"idempotency_key": f"checkout-create:{PAYMENT_ID}"}
 
 
 def test_checkout_request_is_deterministic(sessions):
     fake = sessions(SESSION)
 
-    providers.charge(42, Decimal("24.98"), STARTED)
-    providers.charge(42, Decimal("24.98"), STARTED)
+    providers.charge(PAYMENT_ID, 42, Decimal("24.98"), STARTED)
+    providers.charge(PAYMENT_ID, 42, Decimal("24.98"), STARTED)
 
     assert fake.calls[0] == fake.calls[1]
 
@@ -83,7 +85,24 @@ def test_checkout_request_is_deterministic(sessions):
 def test_rejected_request_fails_the_payment(sessions):
     sessions(stripe.InvalidRequestError("amount too small", param="unit_amount"))
 
-    result = providers.charge(42, Decimal("0.10"), STARTED)
+    result = providers.charge(PAYMENT_ID, 42, Decimal("0.10"), STARTED)
+
+    assert result == providers.ChargeResult(PaymentStatus.FAILED)
+
+
+def test_payments_for_the_same_order_get_distinct_keys(sessions):
+    fake = sessions(SESSION)
+
+    providers.charge(uuid4(), 42, Decimal("24.98"), STARTED)
+    providers.charge(uuid4(), 42, Decimal("24.98"), STARTED)
+
+    assert fake.calls[0][1] != fake.calls[1][1]
+
+
+def test_reused_key_with_different_params_fails_the_payment(sessions):
+    sessions(stripe.IdempotencyError("idempotency key reused with different params"))
+
+    result = providers.charge(PAYMENT_ID, 42, Decimal("24.98"), STARTED)
 
     assert result == providers.ChargeResult(PaymentStatus.FAILED)
 
@@ -92,7 +111,7 @@ def test_stripe_outage_is_unavailable(sessions):
     sessions(stripe.APIConnectionError("connection refused"))
 
     with pytest.raises(providers.ProviderUnavailable):
-        providers.charge(42, Decimal("24.98"), STARTED)
+        providers.charge(PAYMENT_ID, 42, Decimal("24.98"), STARTED)
 
 
 @pytest.mark.skipif(
@@ -100,12 +119,13 @@ def test_stripe_outage_is_unavailable(sessions):
     reason="set STRIPE_LIVE_TESTS=1 and STRIPE_API_KEY to call the Stripe sandbox",
 )
 def test_stripe_sandbox_checkout_is_idempotent():
+    payment_id = uuid4()
     order_id = random.randint(10**9, 2 * 10**9)
 
     started_at = datetime.now(UTC)
 
-    first = providers.charge(order_id, Decimal("24.98"), started_at)
-    retry = providers.charge(order_id, Decimal("24.98"), started_at)
+    first = providers.charge(payment_id, order_id, Decimal("24.98"), started_at)
+    retry = providers.charge(payment_id, order_id, Decimal("24.98"), started_at)
 
     assert first.checkout_url
     assert retry == first

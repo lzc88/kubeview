@@ -38,7 +38,7 @@ CHECKOUT = providers.ChargeResult(
 def checkout(monkeypatch):
     calls = []
 
-    def create(order_id, amount, started_at):
+    def create(payment_id, order_id, amount, started_at):
         calls.append(order_id)
         return CHECKOUT
 
@@ -147,7 +147,7 @@ def test_rejected_checkout_fails_the_payment(client, session, monkeypatch):
     monkeypatch.setattr(
         providers,
         "charge",
-        lambda order_id, amount, started_at: providers.ChargeResult(
+        lambda payment_id, order_id, amount, started_at: providers.ChargeResult(
             PaymentStatus.FAILED
         ),
     )
@@ -169,7 +169,7 @@ def test_stale_pending_payment_with_different_amount_is_rejected(client, session
 
 
 def test_provider_unavailable_leaves_payment_pending(client, session, monkeypatch):
-    def unavailable(order_id, amount, started_at):
+    def unavailable(payment_id, order_id, amount, started_at):
         raise providers.ProviderUnavailable("connection refused")
 
     monkeypatch.setattr(providers, "charge", unavailable)

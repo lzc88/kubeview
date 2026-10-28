@@ -1,7 +1,9 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import cache
+from uuid import UUID
 
 import stripe
 
@@ -9,6 +11,8 @@ from ecommerce.payments.config import settings
 from ecommerce.payments.db.models import PaymentStatus
 
 INTEGRATION_IDENTIFIER = "kubeview-checkout-qmrvtzke"
+
+logger = logging.getLogger(__name__)
 
 
 class ProviderUnavailable(Exception):
@@ -23,7 +27,9 @@ class ChargeResult:
     checkout_url: str | None = None
 
 
-def charge(order_id: int, amount: Decimal, started_at: datetime) -> ChargeResult:
+def charge(
+    payment_id: UUID, order_id: int, amount: Decimal, started_at: datetime
+) -> ChargeResult:
 
     expires_at = started_at + timedelta(
         minutes=settings.stripe_checkout_expires_after_minutes
@@ -52,10 +58,18 @@ def charge(order_id: int, amount: Decimal, started_at: datetime) -> ChargeResult
                 "expires_at": int(expires_at.timestamp()),
                 "integration_identifier": INTEGRATION_IDENTIFIER,
             },
-            options={"idempotency_key": f"order-{order_id}"},
+            options={"idempotency_key": f"checkout-create:{payment_id}"},
         )
 
     except stripe.InvalidRequestError:
+        return ChargeResult(PaymentStatus.FAILED)
+
+    except stripe.IdempotencyError:
+        logger.error(
+            "checkout request for payment %s reused its idempotency key with "
+            "different parameters",
+            payment_id,
+        )
         return ChargeResult(PaymentStatus.FAILED)
 
     except stripe.StripeError as exc:
