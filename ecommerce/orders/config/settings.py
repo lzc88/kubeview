@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     postgres_user: str
     postgres_password: SecretStr
 
+    payments_url: str = "http://localhost:8001"
+    payments_timeout_seconds: float = 20.0
+
+    reconcile_processing_after_seconds: int = 30
+    pending_order_ttl_minutes: int = 15
+    idempotency_key_ttl_hours: int = 24
+
     @property
     def database_url(self) -> URL:
         return URL.create(

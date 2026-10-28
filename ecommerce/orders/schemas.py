@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -43,3 +44,11 @@ class OrderRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemRead]
+
+
+class OrderPayRead(OrderRead):
+    checkout_url: str | None = None
+
+
+class PaymentNotification(BaseModel):
+    status: Literal["SUCCEEDED", "FAILED"]
