@@ -20,6 +20,21 @@ def claim(session: Session, order_id: int, amount: Decimal) -> Payment | None:
 
     if payment is None:
 
+        create_deadline = func.now() - timedelta(
+            seconds=settings.checkout_create_deadline_seconds
+        )
+
+        session.execute(
+            update(Payment)
+            .where(
+                Payment.order_id == order_id,
+                Payment.status == PaymentStatus.PENDING,
+                Payment.checkout_session_id.is_(None),
+                Payment.created_at < create_deadline,
+            )
+            .values(status=PaymentStatus.FAILED)
+        )
+
         stale_cutoff = func.now() - timedelta(
             seconds=settings.pending_retry_after_seconds
         )

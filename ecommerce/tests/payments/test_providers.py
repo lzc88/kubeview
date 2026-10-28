@@ -1,5 +1,6 @@
 import os
 import random
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -9,6 +10,8 @@ import stripe
 from ecommerce.payments import providers
 from ecommerce.payments.config import settings
 from ecommerce.payments.db.models import PaymentStatus
+
+STARTED = datetime(2026, 1, 1, tzinfo=UTC)
 
 SESSION = SimpleNamespace(
     id="cs_test_123", url="https://checkout.stripe.com/c/pay/cs_test_123"
@@ -43,7 +46,7 @@ def sessions(monkeypatch):
 def test_charge_returns_pending_checkout(sessions):
     sessions(SESSION)
 
-    result = providers.charge(42, Decimal("24.98"))
+    result = providers.charge(42, Decimal("24.98"), STARTED)
 
     assert result == providers.ChargeResult(
         PaymentStatus.PENDING,
@@ -55,7 +58,7 @@ def test_charge_returns_pending_checkout(sessions):
 def test_checkout_request_is_idempotent_per_order(sessions):
     fake = sessions(SESSION)
 
-    providers.charge(42, Decimal("24.98"))
+    providers.charge(42, Decimal("24.98"), STARTED)
 
     params, options = fake.calls[0]
     assert params["mode"] == "payment"
@@ -64,23 +67,32 @@ def test_checkout_request_is_idempotent_per_order(sessions):
     assert params["client_reference_id"] == "42"
     assert "42" in params["success_url"]
     assert "payment_method_types" not in params
+    assert params["expires_at"] == int((STARTED + timedelta(minutes=60)).timestamp())
     assert options == {"idempotency_key": "order-42"}
 
 
 def test_checkout_request_is_deterministic(sessions):
     fake = sessions(SESSION)
 
-    providers.charge(42, Decimal("24.98"))
-    providers.charge(42, Decimal("24.98"))
+    providers.charge(42, Decimal("24.98"), STARTED)
+    providers.charge(42, Decimal("24.98"), STARTED)
 
     assert fake.calls[0] == fake.calls[1]
+
+
+def test_rejected_request_fails_the_payment(sessions):
+    sessions(stripe.InvalidRequestError("amount too small", param="unit_amount"))
+
+    result = providers.charge(42, Decimal("0.10"), STARTED)
+
+    assert result == providers.ChargeResult(PaymentStatus.FAILED)
 
 
 def test_stripe_outage_is_unavailable(sessions):
     sessions(stripe.APIConnectionError("connection refused"))
 
     with pytest.raises(providers.ProviderUnavailable):
-        providers.charge(42, Decimal("24.98"))
+        providers.charge(42, Decimal("24.98"), STARTED)
 
 
 @pytest.mark.skipif(
@@ -90,8 +102,10 @@ def test_stripe_outage_is_unavailable(sessions):
 def test_stripe_sandbox_checkout_is_idempotent():
     order_id = random.randint(10**9, 2 * 10**9)
 
-    first = providers.charge(order_id, Decimal("24.98"))
-    retry = providers.charge(order_id, Decimal("24.98"))
+    started_at = datetime.now(UTC)
+
+    first = providers.charge(order_id, Decimal("24.98"), started_at)
+    retry = providers.charge(order_id, Decimal("24.98"), started_at)
 
     assert first.checkout_url
     assert retry == first

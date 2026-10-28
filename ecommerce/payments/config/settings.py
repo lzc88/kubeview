@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import Self
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     postgres_password: SecretStr
 
     pending_retry_after_seconds: int = 30
+    checkout_create_deadline_seconds: int = 600
 
     orders_url: str = "http://localhost:8000"
     orders_timeout_seconds: float = 2.0
@@ -28,6 +30,19 @@ class Settings(BaseSettings):
     stripe_currency: str = "sgd"
     stripe_success_url: str = "http://localhost:8000/orders/{order_id}"
     stripe_timeout_seconds: float = 10.0
+    stripe_max_network_retries: int = 2
+    stripe_checkout_expires_after_minutes: int = 60
+
+    @model_validator(mode="after")
+    def checkout_outlives_create_deadline(self) -> Self:
+        if self.stripe_checkout_expires_after_minutes * 60 < (
+            self.checkout_create_deadline_seconds + 31 * 60
+        ):
+            raise ValueError(
+                "STRIPE_CHECKOUT_EXPIRES_AFTER_MINUTES must leave Stripe's 30 minute "
+                "minimum after CHECKOUT_CREATE_DEADLINE_SECONDS"
+            )
+        return self
 
     @property
     def database_url(self) -> URL:

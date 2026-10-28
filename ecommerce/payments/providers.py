@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import cache
 
@@ -22,7 +23,11 @@ class ChargeResult:
     checkout_url: str | None = None
 
 
-def charge(order_id: int, amount: Decimal) -> ChargeResult:
+def charge(order_id: int, amount: Decimal, started_at: datetime) -> ChargeResult:
+
+    expires_at = started_at + timedelta(
+        minutes=settings.stripe_checkout_expires_after_minutes
+    )
 
     try:
         checkout = stripe_client().v1.checkout.sessions.create(
@@ -44,10 +49,14 @@ def charge(order_id: int, amount: Decimal) -> ChargeResult:
                 "success_url": settings.stripe_success_url.replace(
                     "{order_id}", str(order_id)
                 ),
+                "expires_at": int(expires_at.timestamp()),
                 "integration_identifier": INTEGRATION_IDENTIFIER,
             },
             options={"idempotency_key": f"order-{order_id}"},
         )
+
+    except stripe.InvalidRequestError:
+        return ChargeResult(PaymentStatus.FAILED)
 
     except stripe.StripeError as exc:
         raise ProviderUnavailable(str(exc)) from exc
@@ -70,4 +79,5 @@ def stripe_client() -> stripe.StripeClient:
         http_client=stripe.HTTPXClient(
             timeout=settings.stripe_timeout_seconds, allow_sync_methods=True
         ),
+        max_network_retries=settings.stripe_max_network_retries,
     )

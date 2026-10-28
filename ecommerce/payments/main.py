@@ -57,7 +57,7 @@ def create_payment(
         return PaymentRead.model_validate(existing)
 
     try:
-        result = providers.charge(payment.order_id, payment.amount)
+        result = providers.charge(payment.order_id, payment.amount, payment.created_at)
 
     except providers.ProviderUnavailable:
         raise HTTPException(

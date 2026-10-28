@@ -21,7 +21,7 @@ def add_payment(session, order_id=1, amount="24.98", age=timedelta(0), **fields)
     session.execute(
         update(Payment)
         .where(Payment.id == payment.id)
-        .values(updated_at=func.now() - age)
+        .values(created_at=func.now() - age, updated_at=func.now() - age)
     )
     session.commit()
     return payment
@@ -38,7 +38,7 @@ CHECKOUT = providers.ChargeResult(
 def checkout(monkeypatch):
     calls = []
 
-    def create(order_id, amount):
+    def create(order_id, amount, started_at):
         calls.append(order_id)
         return CHECKOUT
 
@@ -133,6 +133,32 @@ def test_stale_pending_payment_is_retried(client, session, checkout):
     assert checkout == [1]
 
 
+def test_payment_without_checkout_past_deadline_fails(client, session, checkout):
+    add_payment(session, age=timedelta(minutes=11))
+
+    response = pay(client)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "FAILED"
+    assert checkout == []
+
+
+def test_rejected_checkout_fails_the_payment(client, session, monkeypatch):
+    monkeypatch.setattr(
+        providers,
+        "charge",
+        lambda order_id, amount, started_at: providers.ChargeResult(
+            PaymentStatus.FAILED
+        ),
+    )
+
+    response = pay(client)
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "FAILED"
+    assert stored(session).status == PaymentStatus.FAILED
+
+
 def test_stale_pending_payment_with_different_amount_is_rejected(client, session):
     add_payment(session, amount="24.98", age=timedelta(minutes=5))
 
@@ -143,7 +169,7 @@ def test_stale_pending_payment_with_different_amount_is_rejected(client, session
 
 
 def test_provider_unavailable_leaves_payment_pending(client, session, monkeypatch):
-    def unavailable(order_id, amount):
+    def unavailable(order_id, amount, started_at):
         raise providers.ProviderUnavailable("connection refused")
 
     monkeypatch.setattr(providers, "charge", unavailable)
