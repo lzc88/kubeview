@@ -1,5 +1,3 @@
-import random
-import time
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import cache
@@ -25,23 +23,6 @@ class ChargeResult:
 
 
 def charge(order_id: int, amount: Decimal) -> ChargeResult:
-
-    if settings.provider == "stripe":
-        return create_checkout(order_id, amount)
-
-    return charge_fake()
-
-
-def charge_fake() -> ChargeResult:
-
-    time.sleep(settings.latency_ms / 1000)
-
-    succeeded = random.random() >= settings.failure_rate
-
-    return ChargeResult(PaymentStatus.SUCCEEDED if succeeded else PaymentStatus.FAILED)
-
-
-def create_checkout(order_id: int, amount: Decimal) -> ChargeResult:
 
     try:
         checkout = stripe_client().v1.checkout.sessions.create(

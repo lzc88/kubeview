@@ -1,14 +1,12 @@
 import os
 
 os.environ["POSTGRES_DB"] = "payments_test"
-os.environ["PROVIDER"] = "fake"
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 import ecommerce.payments.db.models  # noqa: F401
-from ecommerce.payments.config import settings
 from ecommerce.payments.db.base import Base
 from ecommerce.payments.db.db import engine, get_session
 from ecommerce.payments.main import app
@@ -36,8 +34,7 @@ def session():
 
 
 @pytest.fixture
-def client(session, monkeypatch):
-    monkeypatch.setattr(settings, "latency_ms", 0)
+def client(session):
     app.dependency_overrides[get_session] = lambda: session
     with TestClient(app) as client:
         yield client

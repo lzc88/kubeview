@@ -40,17 +40,7 @@ def sessions(monkeypatch):
     return use
 
 
-def test_fake_provider_settles_immediately(monkeypatch):
-    monkeypatch.setattr(settings, "failure_rate", 0.0)
-    monkeypatch.setattr(settings, "latency_ms", 0)
-
-    result = providers.charge(42, Decimal("24.98"))
-
-    assert result == providers.ChargeResult(PaymentStatus.SUCCEEDED)
-
-
-def test_stripe_provider_returns_pending_checkout(sessions, monkeypatch):
-    monkeypatch.setattr(settings, "provider", "stripe")
+def test_charge_returns_pending_checkout(sessions):
     sessions(SESSION)
 
     result = providers.charge(42, Decimal("24.98"))
@@ -65,7 +55,7 @@ def test_stripe_provider_returns_pending_checkout(sessions, monkeypatch):
 def test_checkout_request_is_idempotent_per_order(sessions):
     fake = sessions(SESSION)
 
-    providers.create_checkout(42, Decimal("24.98"))
+    providers.charge(42, Decimal("24.98"))
 
     params, options = fake.calls[0]
     assert params["mode"] == "payment"
@@ -80,8 +70,8 @@ def test_checkout_request_is_idempotent_per_order(sessions):
 def test_checkout_request_is_deterministic(sessions):
     fake = sessions(SESSION)
 
-    providers.create_checkout(42, Decimal("24.98"))
-    providers.create_checkout(42, Decimal("24.98"))
+    providers.charge(42, Decimal("24.98"))
+    providers.charge(42, Decimal("24.98"))
 
     assert fake.calls[0] == fake.calls[1]
 
@@ -90,7 +80,7 @@ def test_stripe_outage_is_unavailable(sessions):
     sessions(stripe.APIConnectionError("connection refused"))
 
     with pytest.raises(providers.ProviderUnavailable):
-        providers.create_checkout(42, Decimal("24.98"))
+        providers.charge(42, Decimal("24.98"))
 
 
 @pytest.mark.skipif(
@@ -100,8 +90,8 @@ def test_stripe_outage_is_unavailable(sessions):
 def test_stripe_sandbox_checkout_is_idempotent():
     order_id = random.randint(10**9, 2 * 10**9)
 
-    first = providers.create_checkout(order_id, Decimal("24.98"))
-    retry = providers.create_checkout(order_id, Decimal("24.98"))
+    first = providers.charge(order_id, Decimal("24.98"))
+    retry = providers.charge(order_id, Decimal("24.98"))
 
     assert first.checkout_url
     assert retry == first

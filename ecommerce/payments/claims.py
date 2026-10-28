@@ -13,7 +13,7 @@ def claim(session: Session, order_id: int, amount: Decimal) -> Payment | None:
 
     payment = session.scalar(
         insert(Payment)
-        .values(order_id=order_id, amount=amount, provider=settings.provider)
+        .values(order_id=order_id, amount=amount, provider="stripe")
         .on_conflict_do_nothing(index_elements=[Payment.order_id])
         .returning(Payment)
     )

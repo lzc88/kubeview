@@ -1,7 +1,6 @@
 from pathlib import Path
-from typing import Literal, Self
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -19,11 +18,7 @@ class Settings(BaseSettings):
     postgres_user: str
     postgres_password: SecretStr
 
-    provider: Literal["fake", "stripe"] = "fake"
     pending_retry_after_seconds: int = 30
-
-    failure_rate: float = Field(default=0.2, ge=0, le=1)
-    latency_ms: int = Field(default=0, ge=0)
 
     orders_url: str = "http://localhost:8000"
     orders_timeout_seconds: float = 2.0
@@ -33,16 +28,6 @@ class Settings(BaseSettings):
     stripe_currency: str = "sgd"
     stripe_success_url: str = "http://localhost:8000/orders/{order_id}"
     stripe_timeout_seconds: float = 10.0
-
-    @model_validator(mode="after")
-    def stripe_needs_secrets(self) -> Self:
-        if self.provider == "stripe" and (
-            self.stripe_api_key is None or self.stripe_webhook_secret is None
-        ):
-            raise ValueError(
-                "STRIPE_API_KEY and STRIPE_WEBHOOK_SECRET are required when PROVIDER=stripe"
-            )
-        return self
 
     @property
     def database_url(self) -> URL:
