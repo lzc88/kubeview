@@ -1,10 +1,10 @@
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from ecommerce.orders import payments_client
+from ecommerce.orders import payment_flow, payments_client
 from ecommerce.orders.db.db import get_session
 from ecommerce.orders.db.models import Order, OrderItem, OrderStatus
 from ecommerce.orders.schemas import OrderCreate, OrderRead
@@ -40,7 +40,7 @@ def get_order(order_id: int, session: SessionDep) -> OrderRead:
 
 
 @app.post("/orders/{order_id}/pay")
-def pay_order(order_id: int, session: SessionDep) -> OrderRead:
+def pay_order(order_id: int, session: SessionDep, response: Response) -> OrderRead:
     order = session.get(
         Order, order_id, options=[selectinload(Order.items)], with_for_update=True
     )
@@ -50,16 +50,13 @@ def pay_order(order_id: int, session: SessionDep) -> OrderRead:
         raise HTTPException(
             status.HTTP_409_CONFLICT, f"order is {order.status}, not PENDING"
         )
+    order.status = OrderStatus.PROCESSING
+    session.commit()
 
     try:
-        succeeded = payments_client.charge(order.id, order.total)
+        payment_flow.settle(session, order)
     except payments_client.PaymentsUnavailable:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "payments service unavailable"
-        )
-
-    order.status = OrderStatus.PAID if succeeded else OrderStatus.PAYMENT_FAILED
-    session.commit()
+        response.status_code = status.HTTP_202_ACCEPTED
     return OrderRead.model_validate(order)
 
 

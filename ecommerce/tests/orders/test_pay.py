@@ -48,14 +48,26 @@ def test_declined_payment_marks_order_failed(client, charges):
     assert response.json()["status"] == "PAYMENT_FAILED"
 
 
-def test_payments_unavailable_leaves_order_pending(client, charges):
+def test_payments_unavailable_leaves_order_processing(client, charges):
     charges(payments_client.PaymentsUnavailable("connection refused"))
     order = make_order(client)
 
     response = client.post(f"/orders/{order['id']}/pay")
 
-    assert response.status_code == 503
-    assert client.get(f"/orders/{order['id']}").json()["status"] == "PENDING"
+    assert response.status_code == 202
+    assert response.json()["status"] == "PROCESSING"
+    assert client.get(f"/orders/{order['id']}").json()["status"] == "PROCESSING"
+
+
+def test_paying_a_processing_order_is_rejected(client, charges):
+    charges(payments_client.PaymentsUnavailable("connection refused"))
+    order = make_order(client)
+    client.post(f"/orders/{order['id']}/pay")
+
+    response = client.post(f"/orders/{order['id']}/pay")
+
+    assert response.status_code == 409
+    assert len(charges.calls) == 1
 
 
 def test_paying_twice_is_rejected(client, charges):

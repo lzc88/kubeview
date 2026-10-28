@@ -17,8 +17,10 @@ from ecommerce.orders.db.base import Base
 
 class OrderStatus(StrEnum):
     PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
     PAID = "PAID"
     PAYMENT_FAILED = "PAYMENT_FAILED"
+    CANCELLED = "CANCELLED"
     SHIPPED = "SHIPPED"
     DELIVERED = "DELIVERED"
 

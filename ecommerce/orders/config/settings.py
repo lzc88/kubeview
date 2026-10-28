@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     payments_url: str = "http://localhost:8001"
     payments_timeout_seconds: float = 2.0
 
+    reconcile_processing_after_seconds: int = 30
+    pending_order_ttl_minutes: int = 15
+
     @property
     def database_url(self) -> URL:
         return URL.create(
