@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     reconcile_processing_after_seconds: int = 30
     pending_order_ttl_minutes: int = 15
+    idempotency_key_ttl_hours: int = 24
 
     @property
     def database_url(self) -> URL:

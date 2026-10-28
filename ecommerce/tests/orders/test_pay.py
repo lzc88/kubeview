@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 
 from ecommerce.orders import payments_client
@@ -5,7 +7,11 @@ from ecommerce.orders import payments_client
 
 def make_order(client):
     items = [{"sku": "SKU-1", "qty": 2, "unit_price": "9.99"}]
-    return client.post("/orders", json={"user_id": "u1", "items": items}).json()
+    return client.post(
+        "/orders",
+        json={"user_id": "u1", "items": items},
+        headers={"Idempotency-Key": str(uuid4())},
+    ).json()
 
 
 @pytest.fixture

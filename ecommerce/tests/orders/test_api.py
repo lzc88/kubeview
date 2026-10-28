@@ -1,12 +1,18 @@
+from uuid import uuid4
+
 import pytest
 
 
-def make_order(client, user_id="u1", items=None):
+def make_order(client, user_id="u1", items=None, key=None):
     items = items or [
         {"sku": "SKU-1", "qty": 2, "unit_price": "9.99"},
         {"sku": "SKU-2", "qty": 1, "unit_price": "5.00"},
     ]
-    return client.post("/orders", json={"user_id": user_id, "items": items})
+    return client.post(
+        "/orders",
+        json={"user_id": user_id, "items": items},
+        headers={"Idempotency-Key": key or str(uuid4())},
+    )
 
 
 def test_healthz(client):
@@ -78,6 +84,10 @@ def test_list_orders_filters_by_user_newest_first(client):
     ],
 )
 def test_create_order_rejects_invalid_items(client, items):
-    response = client.post("/orders", json={"user_id": "u1", "items": items})
+    response = client.post(
+        "/orders",
+        json={"user_id": "u1", "items": items},
+        headers={"Idempotency-Key": str(uuid4())},
+    )
 
     assert response.status_code == 422

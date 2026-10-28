@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 from datetime import timedelta
+from typing import cast
 
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ecommerce.orders import payments_client
 from ecommerce.orders.config import settings
 from ecommerce.orders.db.db import SessionLocal
-from ecommerce.orders.db.models import Order, OrderStatus
+from ecommerce.orders.db.models import IdempotencyKey, Order, OrderStatus
 from ecommerce.orders.payment_flow import settle
 
 
@@ -16,6 +17,7 @@ class ReconcileResult:
     settled: int = 0
     still_processing: int = 0
     cancelled: int = 0
+    expired_keys: int = 0
 
 
 def reconcile(session: Session) -> ReconcileResult:
@@ -38,12 +40,26 @@ def reconcile(session: Session) -> ReconcileResult:
             result.still_processing += 1
 
     pending_cutoff = func.now() - timedelta(minutes=settings.pending_order_ttl_minutes)
-    cancelled = session.execute(
-        update(Order)
-        .where(Order.status == OrderStatus.PENDING, Order.created_at < pending_cutoff)
-        .values(status=OrderStatus.CANCELLED)
+    cancelled = cast(
+        CursorResult,
+        session.execute(
+            update(Order)
+            .where(
+                Order.status == OrderStatus.PENDING, Order.created_at < pending_cutoff
+            )
+            .values(status=OrderStatus.CANCELLED)
+        ),
     )
     result.cancelled = cancelled.rowcount
+
+    key_cutoff = func.now() - timedelta(hours=settings.idempotency_key_ttl_hours)
+    expired = cast(
+        CursorResult,
+        session.execute(
+            delete(IdempotencyKey).where(IdempotencyKey.created_at < key_cutoff)
+        ),
+    )
+    result.expired_keys = expired.rowcount
     session.commit()
 
     return result

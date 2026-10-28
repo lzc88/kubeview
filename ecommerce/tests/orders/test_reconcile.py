@@ -1,11 +1,12 @@
 from datetime import timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, update
 
 from ecommerce.orders import payments_client
-from ecommerce.orders.db.models import Order, OrderItem, OrderStatus
+from ecommerce.orders.db.models import IdempotencyKey, Order, OrderItem, OrderStatus
 from ecommerce.orders.reconcile import reconcile
 
 
@@ -120,3 +121,28 @@ def test_settled_orders_are_untouched(session, charge):
     reconcile(session)
 
     assert status_of(session, order) == OrderStatus.PAID
+
+
+def add_key(session, age=timedelta(0)):
+    key = IdempotencyKey(key=str(uuid4()), request_hash="hash", order_id=1)
+    session.add(key)
+    session.flush()
+    session.execute(
+        update(IdempotencyKey)
+        .where(IdempotencyKey.key == key.key)
+        .values(created_at=func.now() - age)
+    )
+    session.commit()
+    return key.key
+
+
+def test_expired_idempotency_keys_are_deleted(session, charge):
+    charge(True)
+    expired = add_key(session, age=timedelta(hours=25))
+    fresh = add_key(session, age=timedelta(hours=1))
+
+    result = reconcile(session)
+
+    assert result.expired_keys == 1
+    assert session.get(IdempotencyKey, expired) is None
+    assert session.get(IdempotencyKey, fresh) is not None

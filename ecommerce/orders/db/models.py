@@ -74,3 +74,15 @@ class OrderItem(Base):
     unit_price: Mapped[Decimal] = mapped_column(Numeric(10, 2))
 
     order: Mapped[Order] = relationship(back_populates="items")
+
+
+class IdempotencyKey(Base):
+
+    __tablename__ = "idempotency_keys"
+
+    key: Mapped[str] = mapped_column(primary_key=True)
+    request_hash: Mapped[str]
+    order_id: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
