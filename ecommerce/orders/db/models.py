@@ -65,10 +65,6 @@ class Order(Base):
         order_by="OrderStatusEvent.id",
     )
 
-    def move_to(self, status: OrderStatus) -> None:
-        self.history.append(OrderStatusEvent(from_status=self.status, to_status=status))
-        self.status = status
-
 
 class OrderItem(Base):
 
@@ -110,7 +106,7 @@ class OrderStatusEvent(Base):
     to_status: Mapped[str]
     pod: Mapped[str] = mapped_column(default=lambda: POD)
     at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.clock_timestamp()
     )
 
     order: Mapped[Order] = relationship(back_populates="history")
