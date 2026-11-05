@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     stripe_api_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
     stripe_currency: str = "sgd"
-    stripe_success_url: str = "http://localhost:8000/orders/{order_id}"
+    stripe_success_url: str = "http://localhost:8080/orders/{order_id}"
     stripe_timeout_seconds: float = 5.0
     stripe_max_network_retries: int = 2
     stripe_checkout_expires_after_minutes: int = 60
