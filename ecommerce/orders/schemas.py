@@ -37,6 +37,7 @@ class OrderItemRead(BaseModel):
 class OrderStatusEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: int
     from_status: OrderStatus | None
     to_status: OrderStatus
     pod: str
