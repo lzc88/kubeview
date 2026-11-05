@@ -93,6 +93,19 @@ services:
       orders-init:
         condition: service_completed_successfully
 
+  web:
+    build:
+      context: web
+    image: ecommerce-web:local
+    restart: unless-stopped
+    environment:
+      ORDERS_UPSTREAM: http://orders:8000
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      orders:
+        condition: service_healthy
+
   stripe-listen:
     image: stripe/stripe-cli:v1.53.1
     command: listen --events checkout.session.completed,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed,checkout.session.expired --forward-to http://payments:8001/webhooks/stripe

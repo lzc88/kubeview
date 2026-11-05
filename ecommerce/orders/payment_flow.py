@@ -1,7 +1,6 @@
-from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from ecommerce.orders import payments_client
+from ecommerce.orders import payments_client, status_flow
 from ecommerce.orders.db.models import Order, OrderStatus
 
 ORDER_STATUS_FOR = {
@@ -22,11 +21,12 @@ def settle(session: Session, order: Order) -> payments_client.PaymentResult:
 
 def apply_result(session: Session, order: Order, payment_status: str) -> None:
 
-    session.execute(
-        update(Order)
-        .where(Order.id == order.id, Order.status == OrderStatus.PROCESSING)
-        .values(status=ORDER_STATUS_FOR[payment_status])
+    status_flow.transition(
+        session,
+        OrderStatus.PROCESSING,
+        ORDER_STATUS_FOR[payment_status],
+        Order.id == order.id,
     )
 
     session.commit()
-    session.refresh(order)
+    session.expire(order)

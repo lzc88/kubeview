@@ -34,6 +34,16 @@ class OrderItemRead(BaseModel):
     unit_price: Decimal
 
 
+class OrderStatusEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    from_status: OrderStatus | None
+    to_status: OrderStatus
+    pod: str
+    at: datetime
+
+
 class OrderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -44,6 +54,7 @@ class OrderRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemRead]
+    history: list[OrderStatusEventRead]
 
 
 class OrderPayRead(OrderRead):

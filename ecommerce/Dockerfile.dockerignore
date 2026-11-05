@@ -5,3 +5,5 @@
 **/.pytest_cache
 **/.ruff_cache
 ecommerce/tests
+ecommerce/web
+ecommerce/assets

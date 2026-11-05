@@ -1,4 +1,9 @@
 CLAUDE.md
+PRODUCT.md
+DESIGN.md
+
+tests/
+.impeccable/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -220,3 +225,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node
+node_modules/
+*.tsbuildinfo

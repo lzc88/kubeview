@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import cast
 
-from sqlalchemy import CursorResult, delete, func, select, update
+from sqlalchemy import CursorResult, delete, func, select
 from sqlalchemy.orm import Session
 
-from ecommerce.orders import payments_client
+from ecommerce.orders import payments_client, status_flow
 from ecommerce.orders.config import settings
 from ecommerce.orders.db.db import SessionLocal
 from ecommerce.orders.db.models import IdempotencyKey, Order, OrderStatus
@@ -32,6 +32,8 @@ def reconcile(session: Session) -> ReconcileResult:
             Order.updated_at < processing_cutoff,
         )
     ).all()
+    session.commit()
+
     for order in stale:
         try:
             payment = settle(session, order)
@@ -45,17 +47,13 @@ def reconcile(session: Session) -> ReconcileResult:
             result.settled += 1
 
     pending_cutoff = func.now() - timedelta(minutes=settings.pending_order_ttl_minutes)
-    cancelled = cast(
-        CursorResult,
-        session.execute(
-            update(Order)
-            .where(
-                Order.status == OrderStatus.PENDING, Order.created_at < pending_cutoff
-            )
-            .values(status=OrderStatus.CANCELLED)
-        ),
+    cancelled_ids = status_flow.transition(
+        session,
+        OrderStatus.PENDING,
+        OrderStatus.CANCELLED,
+        Order.created_at < pending_cutoff,
     )
-    result.cancelled = cancelled.rowcount
+    result.cancelled = len(cancelled_ids)
 
     key_cutoff = func.now() - timedelta(hours=settings.idempotency_key_ttl_hours)
     expired = cast(
