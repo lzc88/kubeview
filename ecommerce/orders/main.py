@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from ecommerce.orders import idempotency, payment_flow, payments_client
 from ecommerce.orders.db.db import get_session
-from ecommerce.orders.db.models import IdempotencyKey, Order, OrderItem, OrderStatus
+from ecommerce.orders.db.models import (
+    IdempotencyKey,
+    Order,
+    OrderItem,
+    OrderStatus,
+    OrderStatusEvent,
+)
 from ecommerce.orders.schemas import (
     OrderCreate,
     OrderPayRead,
@@ -38,6 +44,7 @@ def create_order(
         user_id=payload.user_id,
         total=sum(item.qty * item.unit_price for item in payload.items),
         items=[OrderItem(**item.model_dump()) for item in payload.items],
+        history=[OrderStatusEvent(from_status=None, to_status=OrderStatus.PENDING)],
     )
 
     session.add(order)
@@ -87,7 +94,9 @@ def pay_order(order_id: int, session: SessionDep, response: Response) -> OrderPa
             status.HTTP_409_CONFLICT, f"order is {order.status}, not payable"
         )
 
-    order.status = OrderStatus.PROCESSING
+    if order.status == OrderStatus.PENDING:
+        order.move_to(OrderStatus.PROCESSING)
+
     session.commit()
 
     try:
