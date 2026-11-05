@@ -2,7 +2,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ecommerce.orders import payments_client
-from ecommerce.orders.db.models import Order, OrderStatus
+from ecommerce.orders.db.models import Order, OrderStatus, OrderStatusEvent
 
 ORDER_STATUS_FOR = {
     "SUCCEEDED": OrderStatus.PAID,
@@ -22,11 +22,24 @@ def settle(session: Session, order: Order) -> payments_client.PaymentResult:
 
 def apply_result(session: Session, order: Order, payment_status: str) -> None:
 
-    session.execute(
+    to_status = ORDER_STATUS_FOR[payment_status]
+
+    changed = session.execute(
         update(Order)
         .where(Order.id == order.id, Order.status == OrderStatus.PROCESSING)
-        .values(status=ORDER_STATUS_FOR[payment_status])
-    )
+        .values(status=to_status)
+        .returning(Order.id)
+    ).scalar_one_or_none()
+
+    if changed is not None:
+        session.add(
+            OrderStatusEvent(
+                order_id=order.id,
+                from_status=OrderStatus.PROCESSING,
+                to_status=to_status,
+            )
+        )
 
     session.commit()
     session.refresh(order)
+    session.expire(order, ["history"])

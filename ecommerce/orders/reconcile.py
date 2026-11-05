@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 from ecommerce.orders import payments_client
 from ecommerce.orders.config import settings
 from ecommerce.orders.db.db import SessionLocal
-from ecommerce.orders.db.models import IdempotencyKey, Order, OrderStatus
+from ecommerce.orders.db.models import (
+    IdempotencyKey,
+    Order,
+    OrderStatus,
+    OrderStatusEvent,
+)
 from ecommerce.orders.payment_flow import settle
 
 
@@ -45,17 +50,22 @@ def reconcile(session: Session) -> ReconcileResult:
             result.settled += 1
 
     pending_cutoff = func.now() - timedelta(minutes=settings.pending_order_ttl_minutes)
-    cancelled = cast(
-        CursorResult,
-        session.execute(
-            update(Order)
-            .where(
-                Order.status == OrderStatus.PENDING, Order.created_at < pending_cutoff
-            )
-            .values(status=OrderStatus.CANCELLED)
-        ),
+    cancelled_ids = session.scalars(
+        update(Order)
+        .where(Order.status == OrderStatus.PENDING, Order.created_at < pending_cutoff)
+        .values(status=OrderStatus.CANCELLED)
+        .returning(Order.id)
+    ).all()
+
+    session.add_all(
+        OrderStatusEvent(
+            order_id=order_id,
+            from_status=OrderStatus.PENDING,
+            to_status=OrderStatus.CANCELLED,
+        )
+        for order_id in cancelled_ids
     )
-    result.cancelled = cancelled.rowcount
+    result.cancelled = len(cancelled_ids)
 
     key_cutoff = func.now() - timedelta(hours=settings.idempotency_key_ttl_hours)
     expired = cast(
